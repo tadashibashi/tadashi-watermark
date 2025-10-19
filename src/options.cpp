@@ -1,5 +1,6 @@
 #include "options.h"
 #include <iostream>
+#include <thread>
 
 static fs::path make_path(const char *filepath)
 {
@@ -110,6 +111,8 @@ bool options::parse_args(int argc, char *argv[])
             	threadpool_size = std::stoul(next);
             	if (threadpool_size == 0)
             		threadpool_size = 1u;
+                if (threadpool_size < std::thread::hardware_concurrency())
+                    threadpool_size = std::thread::hardware_concurrency();
             	++argi;
             }
         }
@@ -164,5 +167,6 @@ options:
         the time in integer milliseconds before the timestamp repeats
     --threads
     	the maximum number of threads to permit
+    	the maximum number of threads allowed (default: 8, actual threads may be less based on hardware concurrency)
 )";
 }
