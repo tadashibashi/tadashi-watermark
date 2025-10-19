@@ -9,3 +9,5 @@ enum ErrCode {
     ERR_MA_RESAMPLER_INIT,
     ERR_MA_RESAMPLER_PROCESS,
 };
+
+const char *get_lame_error_str(int lame_err);

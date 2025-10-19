@@ -45,6 +45,7 @@ target_include_directories(ctpl INTERFACE ${CMAKE_BINARY_DIR}/_deps/ctpl-src)
 add_executable(tadashi_watermark
     src/main.cpp
     src/options.cpp
+    src/errors.cpp
 )
 target_include_directories(tadashi_watermark PRIVATE
     ${LAME_INCLUDE_DIR}

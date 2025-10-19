@@ -73,19 +73,28 @@ ErrCode imprint_watermark(int id,
     // Prepare output file
     std::ofstream out_file(output_filename, std::ios::binary);
     if (!out_file.is_open()) {
-        std::cout << "Output file failed to open: \"" << output_filename << "\"" << std::endl;
+        std::cout << "Output file failed to open at: \"" << output_filename <<
+            "\". Does the parent directory exist?" << std::endl;
         return ERR_FILE_READ;
     }
 
     // Prepare decoders
     ma_decoder track;
-    if (ma_decoder_init_file(track_filename, &decoder_config, &track) != MA_SUCCESS) {
-        std::cout << "Failed to open track mp3 file!" << std::endl;
+    if (ma_result result = ma_decoder_init_file(track_filename, &decoder_config, &track);
+        result != MA_SUCCESS)
+    {
+        std::cout << "Failed to initialize decoder for track file: \"" << track_filename <<
+            "\":" << ma_result_description(result) <<  std::endl;
         return ERR_FILE_READ;
     }
     ma_decoder wmark;
-    if (ma_decoder_init_file(wmark_filename, &decoder_config, &wmark) != MA_SUCCESS) {
-        std::cout << "Failed to open watermark mp3 file!" << std::endl;
+    if (ma_result result = ma_decoder_init_file(wmark_filename, &decoder_config, &wmark);
+        result != MA_SUCCESS)
+    {
+        ma_decoder_uninit(&track);
+
+        std::cout << "Failed to initialize decoder for watermark file: \"" << wmark_filename <<
+            "\":" << ma_result_description(result) << std::endl;
         return ERR_FILE_READ;
     }
 
@@ -107,7 +116,7 @@ ErrCode imprint_watermark(int id,
     if (lame_init_params(lame) == -1) {
         ma_decoder_uninit(&track);
         ma_decoder_uninit(&wmark);
-        std::cerr << "Failed to init LAME parameters.\n";
+        std::cout << "Failed to init LAME parameters.\n";
         return ERR_LAME_INIT;
     }
 
@@ -178,7 +187,10 @@ ErrCode imprint_watermark(int id,
             ma_decoder_uninit(&track);
             ma_decoder_uninit(&wmark);
 
-            std::cerr << "Lame failed to encode buffer\n";
+            std::cout << "Lame failed to encode buffer for file\"" <<
+                output_filename << "\":" <<
+                get_lame_error_str(mp3_bytes_encoded) << std::endl;
+
             return ERR_LAME_ENCODE;
         }
 
