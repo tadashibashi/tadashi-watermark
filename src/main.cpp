@@ -8,10 +8,6 @@
 #include <fstream>
 #include <iostream>
 
-#ifndef THREADPOOL_SIZE
-#define THREADPOOL_SIZE 8
-#endif
-
 const uint32_t MP3_QUALITY_ALGORITHM = 2u;
 const uint32_t MP3_CHANNELS = 2u;
 const uint32_t MP3_BUFFER_SIZE = 65536u;
@@ -30,8 +26,6 @@ ErrCode imprint_watermark(int id,
     double wmark_volume);
 
 int main(int argc, char *argv[]) {
-    // Init thread pool
-
 
     // Prepare arguments
     options opts{};
@@ -40,6 +34,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+    // Decoder configuration
     const auto decoder_config = ma_decoder_config_init(
         PCM_MIX_FORMAT, MP3_CHANNELS, opts.samplerate);
 
@@ -59,7 +54,7 @@ int main(int argc, char *argv[]) {
             opts.wmark_volume);
     }
 
-    threads.stop();
+    threads.stop(true);
     return 0;
 }
 
@@ -74,28 +69,32 @@ ErrCode imprint_watermark(int id,
     double wmark_volume)
 {
     // ----- Initialize -----
+
+    // Prepare output file
     std::ofstream out_file(output_filename, std::ios::binary);
     if (!out_file.is_open()) {
-        std::cerr << "Output file failed to open: \"" << output_filename << "\"\n";
+        std::cout << "Output file failed to open: \"" << output_filename << "\"" << std::endl;
         return ERR_FILE_READ;
     }
 
+    // Prepare decoders
     ma_decoder track;
     if (ma_decoder_init_file(track_filename, &decoder_config, &track) != MA_SUCCESS) {
-        std::cerr << "Failed to open track mp3 file!\n";
+        std::cout << "Failed to open track mp3 file!" << std::endl;
         return ERR_FILE_READ;
     }
     ma_decoder wmark;
     if (ma_decoder_init_file(wmark_filename, &decoder_config, &wmark) != MA_SUCCESS) {
-        std::cerr << "Failed to open watermark mp3 file!\n";
+        std::cout << "Failed to open watermark mp3 file!" << std::endl;
         return ERR_FILE_READ;
     }
 
+    // Prepare encoder
     lame_t lame = lame_init();
     if (!lame) {
         ma_decoder_uninit(&track);
         ma_decoder_uninit(&wmark);
-        std::cerr << "Failed to init LAME.\n";
+        std::cout << "Failed to init LAME." << std::endl;
         return ERR_LAME_INIT;
     }
 
@@ -112,36 +111,39 @@ ErrCode imprint_watermark(int id,
         return ERR_LAME_INIT;
     }
 
-    // ----- Read -----
+    // ----- Decode, mix, and encode mp3 -----
 
-    int16_t track_buf[PCM_FRAMES_PER_ITERATION * decoder_config.channels],
-        wmark_buf[PCM_FRAMES_PER_ITERATION * decoder_config.channels];
-    memset(track_buf, 0, sizeof(track_buf));
-    memset(wmark_buf, 0, sizeof(wmark_buf));
+    // Init buffers
+    int16_t track_buf[PCM_FRAMES_PER_ITERATION * decoder_config.channels];
+    int16_t wmark_buf[PCM_FRAMES_PER_ITERATION * decoder_config.channels];
+    uint8_t mp3_buf[MP3_BUFFER_SIZE];
 
-    unsigned char mp3_buf[MP3_BUFFER_SIZE];
+    memset(wmark_buf, 0, sizeof(wmark_buf)); // watermark must start silently
 
+    // Init watermark state
     bool wmark_is_playing = wmark_offset_ms == 0;
     uint64_t wmark_samples_until_play =
         (uint64_t)( (double)wmark_offset_ms * .001 * decoder_config.sampleRate );
 
-    uint64_t current_track_frame = 0; // use this to track current time for watermarking
-    
+    // Stream through files to save memory
     while (true) {
-        // TRACK DECODING
+        // ----- Track decoding -----
         ma_uint64 track_frames_read = 0;
         ma_result result = ma_decoder_read_pcm_frames(&track, track_buf, PCM_FRAMES_PER_ITERATION, &track_frames_read);
 
         if (track_frames_read == 0) break;
 
-        // WATERMARK DECODING
+        // ----- Watermark decoding -----
         ma_uint64 wmark_frames_read = 0;
         if (wmark_is_playing) {
             result = ma_decoder_read_pcm_frames(&wmark, wmark_buf, PCM_FRAMES_PER_ITERATION, &wmark_frames_read);
-            if (wmark_frames_read == 0) { // not super accurate, but ok for our purposes
+            if (wmark_frames_read == 0) { // not sample accurate, but ok for our purposes
                 wmark_is_playing = false;
                 wmark_samples_until_play = (uint64_t)(decoder_config.sampleRate * (wmark_gap_ms * .001));
-                ma_decoder_seek_to_pcm_frame(&wmark, 0);
+                result = ma_decoder_seek_to_pcm_frame(&wmark, 0);
+                if (result != MA_SUCCESS) {
+                    std::cout << "Failed to seek watermark back to start!" << std::endl;
+                }
             }
         } else {
             if (wmark_samples_until_play == 0) {
@@ -149,26 +151,26 @@ ErrCode imprint_watermark(int id,
                 wmark_samples_until_play = (uint64_t)(decoder_config.sampleRate * (wmark_gap_ms * .001));
                 result = ma_decoder_seek_to_pcm_frame(&wmark, 0);
                 if (result != MA_SUCCESS) {
-                    std::cout << "failed to seek watermark back to start!\n";
+                    std::cout << "Failed to seek watermark back to start!" << std::endl;
                 }
             }
         }
 
-        // decrement wmark sample counter
+        // Update watermark state
         if (wmark_samples_until_play >= PCM_FRAMES_PER_ITERATION) {
             wmark_samples_until_play -= PCM_FRAMES_PER_ITERATION;
         } else {
             wmark_samples_until_play = 0;
         }
 
-        // MIX BUFFERS
+        // ----- Mix Buffers -----
         for (uint32_t frame = 0; frame < wmark_frames_read; ++frame) {
             int base_index = frame * MP3_CHANNELS;
             for (uint32_t channel = 0; channel < MP3_CHANNELS; ++channel)
                 track_buf[base_index + channel] += wmark_buf[base_index + channel] * wmark_volume;   
         }
 
-        // Encode back to MP3
+        // ----- Encode back to MP3 -----
         auto mp3_bytes_encoded = lame_encode_buffer_interleaved(
             lame, track_buf, track_frames_read, mp3_buf, MP3_BUFFER_SIZE);
         if (mp3_bytes_encoded < 0) {
@@ -182,17 +184,18 @@ ErrCode imprint_watermark(int id,
 
         if (mp3_bytes_encoded > 0)
             out_file.write((const char *)mp3_buf, mp3_bytes_encoded);
-
-        current_track_frame += track_frames_read;
     }
 
+    // Flush encoder for any remaining data
     auto flush_bytes = lame_encode_flush(lame, mp3_buf, MP3_BUFFER_SIZE);
     if (flush_bytes > 0) {
         out_file.write((const char *)mp3_buf, flush_bytes);
     }
 
+    // ----- Clean up -----
     lame_close(lame);
     ma_decoder_uninit(&track);
+    ma_decoder_uninit(&wmark);
 
     return ERR_OK;
 }
