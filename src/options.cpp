@@ -146,27 +146,26 @@ bool options::parse_args(int argc, char *argv[])
 const char *options::get_help() noexcept
 {
 	return R"(
-tadashi_watermark track1 track2 track3 watermark.mp3 [options]
+tadashi_watermark track.wav track-2.flac track-etc.mp3 watermark.mp3 --output track_one.mp3 pizza.mp3 muzak-ish.mp3
 
 Description:
-    Takes multiple tracks and stamps each one with a repeating watermark file, outputting mp3's for each.
-    There must be at least one track filename, and the last file is the watermark audio file.
+Takes one or more tracks and stamps each one with a repeating watermark file over a specified interval, outputting mp3's for each.
+There must be at least one track filename, and the last filename listed will be used as the watermark audio file.
 
-options:
+Options:
     --samplerate
-        output mp3 sample rate in hertz, default is 44100
+        output mp3 sample rate in hertz (default: 44100)
     --bitrate
-        output mp3 bitrate, default is 128
+        output mp3 bitrate (default: 128)
     --output
         output mp3 filenames, corresponds with each track arg, in corresponding order, number of outputs should equal
-        the number of tracks (not including the watermark file). If less, the same name in the same directory + -preview
-        will be added.
+        the number of tracks (not including the watermark file). If less, the same name in the same directory + -prev
+        will be added and changed to .mp3 extension. (e.g.: my_file.flac => my_file-prev.mp3)
     --watermark-begin
-        the time in integer milliseconds before starting the watermark
+        the time in integer milliseconds before starting the watermark playback (default: 3000)
     --watermark-gap
-        the time in integer milliseconds before the timestamp repeats
+        the gap time in integer milliseconds between the watermark repeatitions (default: 10000)
     --threads
-    	the maximum number of threads to permit
     	the maximum number of threads allowed (default: 8, actual threads may be less based on hardware concurrency)
 )";
 }
