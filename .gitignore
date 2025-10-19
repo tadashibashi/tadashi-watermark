@@ -1,0 +1,10 @@
+/.idea/
+/.vs/
+/.vscode/
+/build/
+/cmake-build*/
+/.cache/
+
+*.mp3
+
+.DS_Store
