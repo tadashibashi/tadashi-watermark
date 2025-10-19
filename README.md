@@ -6,6 +6,7 @@ Useful for batch automation in creating previews for audio in online stores.
 
 ## Requirements
 - LAME installed locally
+- CMake 3.20+
 
 ## How to use
 

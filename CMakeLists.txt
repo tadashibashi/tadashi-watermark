@@ -1,7 +1,7 @@
 # TADASHISOUND WATERMARK UTILITY
 # Command line utility to add watermarks into mp3 files
 
-cmake_minimum_required(VERSION 4.0)
+cmake_minimum_required(VERSION 3.20)
 project(tadashi_watermark)
 
 set(CMAKE_CXX_STANDARD 20)
